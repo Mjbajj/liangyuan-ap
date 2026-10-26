@@ -1,0 +1,17 @@
+{
+  "name": "liangyuan-ap",
+  "version": "0.1.0",
+  "private": true,
+  "license": "CC0-1.0",
+  "type": "module",
+  "scripts": {
+    "build": "ap build",
+    "check": "ap check",
+    "dev": "ap dev",
+    "preview": "ap preview",
+    "skills": "ap skills install"
+  },
+  "devDependencies": {
+    "advanced-preset": "^1.8.0"
+  }
+}

@@ -1,0 +1,276 @@
+# 梁元 v4.1f（Mj二创1.1）— Advanced Preset（工作流改造版）
+# 开发：npm run dev → ST 的 AP 面板 → 调试 → 开发源填 http://localhost:4747
+formatVersion: 1
+id: liangyuan
+name: 梁元
+version: 0.6.0
+author: Mj
+description: 从原生预设「梁元 v4.1f 1017（Mj二创1.1）」迁移，按花瓣预设改造成「提问 → 规划 → 写作」三阶段工作流，正文、状态栏与选项都由结构化字段直接取。
+minAdvancedPreset: 1.8.0
+
+actors:
+  narrator: { name: 写手, prefix: "{{ap::name::narrator}}: ", color: primary }
+  editor:   { name: 责编, prefix: "{{ap::name::editor}}: ", color: accent }
+  user:     { name: "{{user}}", prefix: "{{ap::name::user}}: " }
+narrator: narrator
+user: user
+
+styles: { prefill: dialogue, plaintext: dialogue, structured: imperative, tool-single: imperative, tool-multi: imperative }
+plaintextFormat: prefix
+contentMarker: "<content>"
+prefillGuide: "<START_OF_STORY>"
+historyItemTemplate: "{{prefix}}{{content}}"
+# 指令式下每个阶段的标题：把「写哪个字段/调哪个工具」直接写在模型眼前
+stageHeading: "### 第 {{n}} 步 · {{label}}（{{actor}}）{{optional}} → `{{target}}`"
+
+regions:
+  - { id: top, role: user }
+  - { id: personaOpen, role: user }
+  - { id: personaClose, role: user }
+  - { id: settingsOpen, role: user }
+  - { id: history, role: user, anchor: historyStart }
+  - { id: settingsClose, role: user, anchor: historyEnd }
+  - { id: post, role: user }
+  - { id: bottom, role: system, anchor: tail }
+workflowRegion: post
+
+vars:
+  mandatoryQuestions:
+    type: dict
+    label: 必答问题
+    description: 每轮提问阶段都要问到的核心问题。
+  optionalQuestions:
+    type: dict
+    label: 选答问题
+    description: 写手挑 2-3 条最相关的来问。
+  mjModules:
+    type: string
+    separator: "\n\n"
+    label: Mj 模块内容
+    description: 各 NSFW 模组启用后往这里追加内容，由「Mj 模块汇总块」统一输出。
+
+insertionPoints:
+  - id: after-rules
+    label: 写作规则之后
+    description: 在预设自带的写作规则之后追加你自己的要求。
+    region: post
+    order: 3900
+  - id: before-workflow
+    label: 工作流之前
+    description: 每轮都会带上的提醒（放在工作流说明之前）。
+    region: post
+    order: 3950
+  - id: after-history
+    label: 聊天记录之后
+    description: 需要每轮刷新、状态类的内容。
+    region: settingsClose
+    order: 500
+
+groups:
+  core: { label: 核心, order: 10 }
+  guidelines: { label: 写作规则, order: 20 }
+  style: { label: 文风, order: 30, allowNone: true }
+  dialogue: { label: 对白占比, order: 40 }
+  transfer: { label: 转述范围, order: 50 }
+  userRole: { label: 用户角色, order: 60, allowNone: true }
+  nsfw: { label: NSFW 模块, order: 70 }
+  suggestions: { label: 结尾选项, order: 80, allowNone: true }
+  status: { label: 状态栏, order: 90, allowNone: true }
+  writing: { label: 写作参数, order: 100, tab: writing }
+
+params:
+  - id: length
+    type: number
+    label: 正文字数
+    description: 正文总字数的大致目标。
+    group: writing
+    unit: 字
+    min: 0
+    max: 20000
+    default: 1500
+  - id: pov
+    type: select
+    label: 人称
+    description: 正文使用的人称视角。
+    group: writing
+    default: third
+    options:
+      - { value: third, label: 第三人称, text: 第三人称 }
+      - { value: first, label: 第一人称, text: 第一人称 }
+      - { value: second, label: 第二人称, text: 第二人称 }
+  - id: xp_appearance
+    type: text
+    label: 角色外貌/外在类性癖
+    description: 填进「涩情特化」模块，直接替换女性角色的外貌/外在设定。留空则不生效。
+    group: writing
+  - id: xp_narrative
+    type: text
+    label: 剧情描写/叙述类性癖
+    description: 填进「涩情特化」模块，融入 NSFW 剧情描写。留空则不生效。
+    group: writing
+
+
+structures:
+  status:
+    kind: custom
+    shape: text
+    display: card
+    title: 状态栏
+    tag: Status
+    field: status
+    description: 本轮结束时的人物与场景状态栏全文（HTML，仅限卡片白名单标签）。
+    formatPrompt:
+      tag: |-
+        状态栏放在 <Status> … </Status> 里，不要写进正文。内容按 HTML 写，只允许这些标签：
+        <p> <p special> <strong> <em> <mark> <br> <hr> <ul> <li> <blockquote> <code>。
+        禁止 <details> <div> <table> 与任何 style= / class= 属性（会被剥离导致排版塌掉）。
+        <Status>
+        <p><strong>📅 日期</strong> …　<strong>⏰ 时间</strong> …　<strong>📍 位置</strong> …</p>
+        <hr>
+        <p special>👩 角色名 · 年龄 · 罩杯 · 身高</p>
+        <ul><li><strong>好感度</strong>：0/100</li>…</ul>
+        </Status>
+      field: '把完整状态栏写进 `{{field}}` 字段，不要写进正文。内容按 HTML 写，只允许 <p> <p special> <strong> <em> <mark> <br> <hr> <ul> <li> <blockquote> <code>，禁止 <details> <div> <table> 与 style= / class= 属性。'  
+  options:
+    kind: options
+    tag: Options
+    field: options
+    count: 8
+    description: 本轮之后可供 {{ap::name::user}} 选择的下一步。
+    properties:
+      label: 类别或方向，5 字以内。
+      content: 具体的行为或剧情描述，写成一条可直接送出的输入。
+    formatPrompt:
+      tag: |-
+        选项单独放在 <Options> 里，每项一个 <option title="类别">描述</option>，共 8 项：
+        <Options>
+        <option title="类别">描述</option>
+        </Options>
+      field: '把 8 个选项填进 `{{field}}` 字段，每项 `{ "label": "类别", "content": "描述" }`。'
+
+carrier:
+  label: 梁元
+  order:
+    - top
+    - personaOpen
+    - personaDescription
+    - personaClose
+    - settingsOpen
+    - { main: false }
+    - worldInfoBefore
+    - charDescription
+    - charPersonality
+    - { enhanceDefinitions: false }
+    - { nsfw: false }
+    - scenario
+    - dialogueExamples
+    - history
+    - chatHistory
+    - worldInfoAfter
+    - settingsClose
+    - post
+    - { jailbreak: false }
+    - bottom
+
+configurationDefaults:
+  sampling:
+    temperature: 1
+    frequency_penalty: 0
+    presence_penalty: 0
+    top_p: 1
+    top_k: 0
+    top_a: 0
+    min_p: 0
+    repetition_penalty: 1
+    openai_max_context: 2000000
+    openai_max_tokens: 63000
+    max_context_unlocked: true
+    stream_openai: true
+    names_behavior: -1
+    squash_system_messages: true
+    use_sysprompt: true
+    function_calling: true
+    tool_call_recurse_limit: 37
+    show_thoughts: true
+    reasoning_effort: medium
+    verbosity: auto
+    continue_prefill: true
+    continue_postfix: " "
+    media_inlining: false
+    wi_format: "{0}"
+    scenario_format: "{{scenario}}"
+    personality_format: "{{personality}}"
+  connection:
+    transport: structured
+    workflow: guided
+    finalFallback: true
+  params:
+    length: 1500
+    pov: third
+
+workflowOrder: [guided, plain, task]
+
+# 指令式传输（structured / 工具）下模型看到的字段名与说明，全部中文
+tools:
+  turn:
+    name: liangyuan_turn
+    description: 一轮完整的写作流程：提问 → 规划 → 写作。
+    field: "step{{n}}_{{stage}}"
+    fieldDescription: "{{label}}（{{actor}}）"
+  submit:
+    name: submit_turn
+    description: 一次性提交整轮：按顺序填好每个阶段，正文与附加格式放在写作者的正文里。
+  stage:
+    name: "{{stage}}"
+    description: "第 {{n}} 步：{{label}}"
+    param: { name: content, description: "本阶段的内容。" }
+    patchParam: { name: edits, description: "对正文的精确替换。" }
+  results:
+    next: 已记录。下一步请调用 `{{next}}`。
+    done: 已记录，本轮完成。
+    unknown: "`{{name}}` 不属于本轮流程。"
+    nudge: 流程还没完成，请调用 `{{next}}`。
+
+syntheticTurns:
+  - id: init
+    label: 流程初始化
+    user: <!-- 开始本轮 -->
+    tool:
+      name: start_workflow
+      description: 开始本轮的写作流程。
+    response:
+      single: 流程已初始化。请调用 `{{submit}}` 一次，按顺序填好每个字段。
+      multi: 流程已初始化。请按顺序调用各阶段工具，从 `{{first}}` 开始。
+
+defaultConfiguration: deepseek-tool
+configurations:
+  # —— DeepSeek 官方 API：不支持 response_format: json_schema，只能走工具或预填充 ——
+  - id: deepseek-tool
+    name: DeepSeek（工具调用·推荐）
+    description: DeepSeek 官方 API 不支持 json_schema，用工具调用逐个提交阶段内容，不走 response_format。
+    diff:
+      sampling: { reasoning_effort: auto, show_thoughts: false }
+      connection: { transport: tool-single }
+  - id: deepseek-prefill
+    name: DeepSeek（预填充）
+    description: 仅 DeepSeek 官方 API 可用（依赖前缀续写）。思考更连贯，输出衔接更自然。
+    diff:
+      sampling: { reasoning_effort: auto, show_thoughts: false }
+      connection: { transport: prefill }
+  # —— 其它接口 ——
+  - id: structured
+    name: 结构化字段（需接口支持 JSON Schema）
+    description: '仅当接口支持 response_format=json_schema 时可用；DeepSeek 会报 "This response_format type is unavailable now"。'
+    diff: {}
+  - id: tools
+    name: 工具调用（通用）
+    description: 任何支持 function calling 的接口都能用。
+    diff: { connection: { transport: tool-single } }
+  - id: plaintext
+    name: 纯文本（对话式，靠前缀解析）
+    description: '兼容性最好，但依赖模型按「写手: / 责编: 」前缀输出阶段。'
+    diff: { connection: { transport: plaintext } }
+  - id: plain
+    name: 快速模式（不分阶段，原预设行为）
+    description: 丢掉提问与规划阶段，恢复原预设的单段思考 + <content> 正文。
+    diff: { connection: { workflow: plain, transport: plaintext } }
